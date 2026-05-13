@@ -3,36 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { documentToReactComponents } from '@contentful/rich-text-react-renderer';
 import { BLOCKS } from '@contentful/rich-text-types';
-import { contentfulGql } from '../utils/contentfulGql';
 
-const BLOG_POST_QUERY = `
-  query GetBlogPost($id: String!) {
-    blog(id: $id) {
-      sys {
-        id
-      }
-      title
-      featuredImage {
-        url
-        title
-      }
-      content {
-        json
-        links {
-          assets {
-            block {
-              sys {
-                id
-              }
-              url
-              title
-            }
-          }
-        }
-      }
-    }
-  }
-`;
 
 function BlogPost() {
   const { id } = useParams();
@@ -45,7 +16,10 @@ function BlogPost() {
     const fetchEntry = async () => {
       try {
         setLoading(true);
-        const data = await contentfulGql(BLOG_POST_QUERY, { id });
+        const response = await fetch(`/api/articles/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch article from backend');
+        const data = await response.json();
+        
         setEntry(data.blog);
         setError(null);
 

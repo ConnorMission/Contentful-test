@@ -32,6 +32,20 @@ const algoliaClient = algoliasearch(
 );
 
 // --- Contentful Fetch Helper ---
+async function contentfulGql(query, variables = {}) {
+  const response = await fetch(`https://graphql.contentful.com/content/v1/spaces/${process.env.VITE_CONTENTFUL_SPACE_ID}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.VITE_CONTENTFUL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const { data, errors } = await response.json();
+  if (errors) throw new Error(errors[0].message);
+  return data;
+}
+
 async function fetchContentfulBlogs() {
   const query = `
     query {
@@ -44,19 +58,72 @@ async function fetchContentfulBlogs() {
       }
     }
   `;
-  const response = await fetch(`https://graphql.contentful.com/content/v1/spaces/${process.env.VITE_CONTENTFUL_SPACE_ID}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.VITE_CONTENTFUL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({ query }),
-  });
-  const { data } = await response.json();
+  const data = await contentfulGql(query);
   return data.blogCollection.items;
 }
 
 // --- Endpoints ---
+
+// Cached Blog Listing
+app.get('/api/articles', async (req, res) => {
+  try {
+    const query = `
+      query GetBlogList {
+        blogCollection(order: sys_firstPublishedAt_DESC) {
+          items {
+            sys { id }
+            title
+            featuredImage { url, title }
+          }
+        }
+      }
+    `;
+    const data = await contentfulGql(query);
+    
+    // Set Edge Caching headers (Vercel specific)
+    // s-maxage=3600 (1 hour on CDN), stale-while-revalidate=600 (10 mins background refresh)
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+    res.json(data);
+  } catch (error) {
+    console.error('Fetch Articles Error:', error);
+    res.status(500).json({ error: 'Failed to fetch articles' });
+  }
+});
+
+// Cached Single Article
+app.get('/api/articles/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const query = `
+      query GetBlogPost($id: String!) {
+        blog(id: $id) {
+          sys { id }
+          title
+          featuredImage { url, title }
+          content {
+            json
+            links {
+              assets {
+                block {
+                  sys { id }
+                  url
+                  title
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const data = await contentfulGql(query, { id });
+    
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+    res.json(data);
+  } catch (error) {
+    console.error('Fetch Article Error:', error);
+    res.status(500).json({ error: 'Failed to fetch article' });
+  }
+});
 
 // Index all blogs in Algolia
 app.post('/api/index-blogs', async (req, res) => {

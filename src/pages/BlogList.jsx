@@ -1,23 +1,6 @@
 import { useState, useEffect } from 'react';
-import { contentfulGql } from '../utils/contentfulGql';
 import BlogCard from '../components/BlogCard';
 
-const BLOG_LIST_QUERY = `
-  query GetBlogList {
-    blogCollection(order: sys_firstPublishedAt_DESC) {
-      items {
-        sys {
-          id
-        }
-        title
-        featuredImage {
-          url
-          title
-        }
-      }
-    }
-  }
-`;
 
 function BlogList() {
   const [entries, setEntries] = useState([]);
@@ -28,7 +11,9 @@ function BlogList() {
     const fetchEntries = async () => {
       try {
         setLoading(true);
-        const data = await contentfulGql(BLOG_LIST_QUERY);
+        const response = await fetch('/api/articles');
+        if (!response.ok) throw new Error('Failed to fetch from backend');
+        const data = await response.json();
 
         const transformedItems = data.blogCollection.items.map(item => ({
           sys: {
@@ -50,8 +35,8 @@ function BlogList() {
         setEntries(transformedItems);
         setError(null);
       } catch (err) {
-        console.error('Error fetching GraphQL entries:', err);
-        setError('Failed to fetch the blog list via GraphQL.');
+        console.error('Error fetching articles:', err);
+        setError('Failed to fetch the blog list.');
       } finally {
         setLoading(false);
       }
